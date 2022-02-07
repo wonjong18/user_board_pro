@@ -15,7 +15,7 @@
   * 가상환경 생성<br>
     '''<br>
     python -m venv venv <br>
-    '''<br><br>  
+    '''<br> 
   * pip update<br>
     '''<br>
     python -m pip install --upgrade pip<br>
