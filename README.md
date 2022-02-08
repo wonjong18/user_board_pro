@@ -1,6 +1,6 @@
 # user_board_pro
   * 회원가입, 로그인, 게시글 운영<br> 
-  * version : python-3.7.9,  mariaDB-10.6
+  * version : python-3.7.9,  mysql 8.0
 
 
 ## INSTALL
