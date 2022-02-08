@@ -1,0 +1,8 @@
+회원가입 :네이버회원가입페이지 
+    - https://nid.naver.com/user2/V2Join?token_sjoin=RcSmbfsA9RAr6a91&langSelect=ko_KR&chk_all=on&termsService=on&termsPrivacy=on&termsLocation=Y&termsEmail=Y
+
+로그인 : 네이버 로그인 페이지
+    - https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fwww.naver.com
+
+게시판 : 네이버 카페 중고나라 자유 게시판 
+    - https://cafe.naver.com/joonggonara

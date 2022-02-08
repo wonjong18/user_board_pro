@@ -6,6 +6,6 @@ logging.basicConfig(level=logging.ERROR)
 from flask import request
 from flask_restx import Resource, Namespace, reqparse
 import datetime
-
+from src.common.util import *
 
 board = Namespace('board')

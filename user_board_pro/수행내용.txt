@@ -1,6 +1,6 @@
 이번주 금요일까지 회원과 비회원을 구분지어 게시글 사용하는 app 만들기
 상용하는 게시판 url 가져오기
-테이블 구성 : 회원, 게시판
+테이블 구성 : 회원, 게시판, *(추가 :파일)*
 기능 : 회원가입, 로그인, 게시판리스트, 게시글(등록, 상세조회, 수정, 삭제)
 
 기능 순서도
@@ -9,10 +9,12 @@
 비회원 -> 게시판 전체리스트 보기, 상세보기 가능, 작성 불가
 
 table
- - User : userNo(pk), userId, userPwd, userEmail, userPhone, gender, refreshToken, createdDate, updatedDate, disabled
+ - user_table : userNo(pk), userId, userPwd, userEmail, userPhone, gender, refreshToken, createdDate, updatedDate, disabled
 
- - board :boardNo, writer ==  userNo(fk), title, contents, userId, createdDate, updatedDate, disabled
-
+ - board_table : boardNo(pk), writer ==  user_table.userNo(fk), title, contents, userId, createdDate, updatedDate, disabled
+ 
+ - file_table : fileNo(pk), boardNo == board_table.boardNo(fk), fileName, filePath, createdDate, updatedDate, disabled
+ 
 dir
  - url.txt(참고 url)
  - user
