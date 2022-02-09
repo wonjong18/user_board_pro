@@ -33,6 +33,7 @@ def get_server_type (request) :
 def get_rand_base64_token():
     return b64encode(token_bytes(32)).decode()
 
+#Access token 생성
 def jwt_token_generator(user_no, user_id, user_name):
     date_time_obj = datetime.datetime
     exp_time = date_time_obj.timestamp(date_time_obj.now() + datetime.timedelta(hours= 9))
@@ -45,6 +46,7 @@ def jwt_token_generator(user_no, user_id, user_name):
     }
     return jwt.encode(payload=payload, key=JWTConfig.SECRET, algorithm='HS256')    
 
+#refresh token 생성
 def jwt_refresh_token_generator(user_no):
     date_time_obj = datetime.datetime
     exp_time = date_time_obj.timestamp(date_time_obj.now()+datetime.timedelta(days= 7))
@@ -54,8 +56,32 @@ def jwt_refresh_token_generator(user_no):
     }
     return jwt.encode(payload=refresh_payload, key=JWTConfig.SECRET, algorithm='HS256')
 
-def jwt_decode_token():
-    return 0
+#토큰 decoding
+def decode_jwt(headers):
+    try :
+        if 'Authorization' in headers :
+            access_token = headers['Authorization'].replace('Bearer ', '')
+
+            if access_token :
+                try :
+                    payload = jwt.decode(access_token, JWTConfig.SECRET, algorithms="HS256")
+                except jwt.InvalidTokenError as e:
+                    payload = None
+
+                if payload is not None :
+                    exp = int(payload['exp'])
+                    date_time_obj = datetime.datetime
+                    now_time = int(date_time_obj.timestamp(date_time_obj.now()))
+
+                    #만기 시간이 더 크면 사용할 수 있는 토큰
+                    if exp > now_time:
+                        return payload
+
+    except BaseException:
+        return None
+    return None
+
+
 
 #유효성 검사
 def chk_input_match(in_type, in_value):    

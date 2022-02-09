@@ -44,7 +44,9 @@ loginPostModel = login.schema_model('loginPostModel', {
 
 @login.route('', methods = ['POST'])
 class LoginApi(Resource):
-
+    #############################################################
+    # POST 로그인
+    #############################################################
     parser = login.parser()
     parser.add_argument('userId', type=str, required = True, location = 'body', help = '회원 ID')
     parser.add_argument('userPwd', type=str, required = True, location = 'body', help='회원 PASSWORD')

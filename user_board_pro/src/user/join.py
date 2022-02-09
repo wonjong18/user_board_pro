@@ -32,7 +32,7 @@ joinPostModel = join.schema_model('joinPostModel',{
 @join.route('', methods=['POST'])
 class JoinApi(Resource):
     #################################################################################
-    #POST
+    #POST 회원가입
     #################################################################################
     parser = join.parser()
     parser.add_argument('userId', type = str, required = True, location='body', help='회원 ID')
