@@ -52,7 +52,7 @@ class LoginApi(Resource):
     parser.add_argument('userPwd', type=str, required = True, location = 'body', help='회원 PASSWORD')
     @login.expect(parser)
 
-    @login.doc(loginPostModel)
+    @login.doc(model = loginPostModel)
     def post(self):
         """
         로그인

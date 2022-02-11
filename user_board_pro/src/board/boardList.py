@@ -40,23 +40,27 @@ boardListGetModel = boardList.schema_model('boardListGetModel',{
                     "title": {
                         "type": "string"
                     },
-                    "writer": {
-                        "type": "string"
+                    "fileNo": {
+                        "type": "boolean"
                     },
-                    "createdDate": {
+                    "writer": {
                         "type": "string"
                     },
                     "counting": {
                         "type": "integer"
+                    },
+                    "createdDate": {
+                        "type": "string"
                     }
                 },
                 "required": [
                     "boardNo",
                     "title",
+                    "fileNo",
                     "writer",
-                    "createdDate",
-                    "counting"
-                ]
+                    "counting",
+                    "createdDate"
+                    ]
             }]
         }
     },
@@ -76,7 +80,7 @@ class boardListApi(Resource):
     #GET 게시판 불러오기 // 로그인을 인증 했을 경우 회원이 작성한 글만 리스트로 보여주기
     ###############################################################################
     parser = boardList.parser()
-    parser.add_argument('Authorization', type = str, required = False, location='headers', help ='로그인 인증 토큰')
+    parser.add_argument('Authorization', type = str, required = False, location='headers', help ='로그인 인증 토큰') #회원이 로그인을 인증하면 자신이 작성한 게시글 보여줌
     parser.add_argument('category', type = str, required = False, location = 'body', help='검색구분(writer, contents, title)')
     parser.add_argument('searchText', type = str, required = False, location = 'boady', help='검색어')
     parser.add_argument('page', type = int, required = False, location = 'body', help='페이지 번호 default : 0')
@@ -87,7 +91,7 @@ class boardListApi(Resource):
     def get(self):
         """게시판 리스트
         필수 :
-        일반 : category, searchText, page, pageSize
+        일반 : Authorization, category, searchText, page, pageSize
         """
 
         statusCode = 200
@@ -134,9 +138,10 @@ class boardListApi(Resource):
                 if parameter['pageSize'] is not None :
                     pageSize = parameter['pageSize']            
 
+                #게시글 개수 불러오기
                 sql = """ SELECT count(*) AS cnt FROM BOARD_TABLE WHERE disabled = 0 """
 
-                #회원이 게시글을 조회했을 때
+                #회원이 자신의 게시글을 조회했을 때
                 if userId is not None :
 
                     #회원테이블에 정말 있는 회원있는지 확인
@@ -162,11 +167,10 @@ class boardListApi(Resource):
                 
                 # 게시글이 있으면 게시판 리스트를 불러옴
                 if total_res['cnt'] > 0 :
+                    
+                    list_sql = """ SELECT boardNo, title, fileNo, writer, createdDate, counting  FROM BOARD_TABLE BT WHERE disabled = 0 """
 
-                    #TODO 파일테이블과 연계하여 파일 유무 보여주기
-                    list_sql = """ SELECT boardNo, title, writer, createdDate, counting  FROM BOARD_TABLE BT WHERE disabled = 0 """
-
-                    #회원의 게시글 리스트 조회 // 게시글 개수를 조회할 때 userId가 올바르게 들어왔는지 확인 했기 때문에 따로 확인 안 함
+                    #회원이 자신의 게시글 리스트 조회 // 게시글 개수를 조회할 때 userId가 올바르게 들어왔는지 확인 했기 때문에 따로 확인 안 함
                     if userId is not None :
                         list_sql = list_sql + """ AND writer = '%s' """%userId
 
@@ -187,14 +191,19 @@ class boardListApi(Resource):
                         item = {}
                         item['boardNo'] = row['boardNo']
                         item['title'] = row['title']
+
+                        #파일이 있으면 True 없으면 False
+                        item['fileNo'] = False    
+                        if row['fileNo'] :
+                            item['fileNo'] = True
+
                         item['writer'] = row['writer']
                         item['counting'] = row['counting']
 
                         #오늘 날짜이면 HH:MM으로 보여주고 다르면 YYYY-MM-DD로 보여주기
+                        item['createdDate'] = row['createdDate'].strftime('%Y-%m-%d')
                         if row['createdDate'].strftime('%Y%m%d') == datetime.datetime.now().strftime('%Y%m%d') :
                             item['createdDate'] = row['createdDate'].strftime('%H:%M')
-                        else:    
-                            item['createdDate'] = row['createdDate'].strftime('%Y-%m-%d')
 
                         item_list.append(item)
 

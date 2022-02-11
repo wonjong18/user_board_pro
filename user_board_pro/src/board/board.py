@@ -1,11 +1,12 @@
 #-*- coding : utf-8 -*-
 import logging
+import shutil
 import traceback
-from attr import has
 logging.basicConfig(level=logging.ERROR)
 
 from flask import request
 from flask_restx import Resource, Namespace, reqparse
+from werkzeug.datastructures import FileStorage  #파일 업로드
 import datetime
 from src.common.util import *
 
@@ -24,6 +25,12 @@ boardGetModel = board.schema_model('boardGetModel', {
         "writer": {
             "type": "string"
         },
+        "contents": {
+            "type": "string"
+        },
+        "fileName": {
+            "type": "string"
+        },
         "counting": {
             "type": "integer"
         },
@@ -35,6 +42,8 @@ boardGetModel = board.schema_model('boardGetModel', {
         "timestamp",
         "title",
         "writer",
+        "contents",
+        "fileName",
         "counting",
         "createdDate"
     ]
@@ -71,7 +80,7 @@ boardPutModel = board.schema_model('boardPutModel', {
         "success"
     ]
 })
-boardDeletModel = board.schema_model('boardDeletModel', {
+boardDeleteModel = board.schema_model('boardDeletModel', {
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
     "properties": {
@@ -129,19 +138,28 @@ class boardApi(Resource):
                 res = cursor.fetchone()
 
                 if res['cnt'] == 1 :
+
                     #조회수 처리
                     sql = """UPDATE BOARD_TABLE SET counting = counting + 1 WHERE boardNo = %s"""
                     cursor.execute(query=sql, args=boardNo)
 
                     #게시글 상세 조회
-                    sql = """SELECT title, writer, counting, createdDate, updatedDate  
-                    FROM BOARD_TABLE BT 
-                    WHERE disabled= 0 AND boardNo = %s"""
+                    sql = """SELECT bt.title, bt.writer, bt.contents, bt.counting, bt.createdDate, ft.fileNameOrigin
+                    FROM BOARD_TABLE BT
+                    LEFT JOIN FILE_TABLE FT  ON bt.fileNo = ft.fileNo 
+                    WHERE bt.disabled= 0 AND bt.boardNo = %s"""
                     cursor.execute(query= sql, args=boardNo)
                     result =  cursor.fetchone()
 
                     data['title'] = result['title']
                     data['writer'] = result['writer']
+                    data['contents'] = result['contents']
+
+                    #파일이 있으면 파일 이름을 보여줌
+                    data['fileName'] = None
+                    if result['fileNameOrigin'] is not None :
+                        data['fileName'] = result['fileNameOrigin']
+
                     data['counting'] = result['counting']
                     data['createdDate'] = result['createdDate'].strftime('%Y-%m-%d %H:%M')
 
@@ -152,6 +170,7 @@ class boardApi(Resource):
             else :
                 statusCode = 404
                 data['error'] = 'Not in parameter'    
+
         except Exception as e :
             logging.error(traceback.format_exc())
             statusCode = 505
@@ -171,6 +190,7 @@ class boardApi(Resource):
     parser.add_argument("Authorization", type=str, required = True, location = 'headers', help='로그인 인증 토큰' )
     parser.add_argument("title", type=str, required=True, location ='body', help='제목')
     parser.add_argument("contents", type = str, required=True, location = 'body', help='내용')
+    parser.add_argument("file", type = FileStorage, required = False, location = 'files', help='파일')
     @board.expect(parser)
 
     @board.doc(model = boardPostModel)
@@ -178,11 +198,11 @@ class boardApi(Resource):
         """
         게시글 작성하기
         필수 : Authorization, title, contents
-        일반 : 
+        일반 : file
         """
         
         statusCode = 200
-        data ={'timestamp': datetime.datetime.now().isoformat()}
+        data = {'timestamp': datetime.datetime.now().isoformat()}
 
         serverType, host, ip = get_server_type(request)
 
@@ -190,7 +210,6 @@ class boardApi(Resource):
         payload = decode_jwt(request.headers)
         if payload is None :
             statusCode = 401
-            #TODO refreshtoken을 이용한 accesstoken 재발급..?으로 권한 재생성 해야함
             data['error'] = '토큰이 만료되었거나, 인증되지 않은 사용자입니다.'
             return data, statusCode
 
@@ -203,6 +222,7 @@ class boardApi(Resource):
         cursor = mysql_cursor(mysql_conn(serverType))
         try:
             hasParam = True
+
             if 'userId' not in payload or payload['userId'] == '' :
                 hasParam = False
             if 'title' not in parameter or parameter['title'] == '' :
@@ -211,28 +231,72 @@ class boardApi(Resource):
                 hasParam = False
             
             if hasParam :
+
                 userId = payload['userId']
                 title = parameter['title']
                 contents = parameter['contents']       
 
+                #파일 등록
+                file = None
+                if 'file' in request.files :
+                    file = request.files['file']
+
+                #정상적인 토큰을 가진 회원인지 조회
                 sql = """SELECT count(userNo) AS cnt FROM USER_TABLE UT WHERE disabled = 0 AND userId = %s""" 
                 cursor.execute(query= sql, args= userId)
                 result = cursor.fetchone()
 
                 #정상적인 경로로 왔을 때
                 if result['cnt'] == 1: 
-                    sql = """INSERT INTO BOARD_TABLE (writer, title, contents) VALUES (%s, %s, %s)  """
-                    cursor.execute(query=sql, args=(userId, title, contents))
-                    boardNo= cursor.lastrowid
+
+                    hasProcess = True
+                    if file is None:
+                        fileNo = None
+                        hasProcess = False
+
+                    #request.file에 파일이 있으면 파일 저장을 진행함
+                    if hasProcess :    
+                        filePath = 'files/board/'
+
+                        #원본 파일명
+                        fileNameOrigin = file.filename
+
+                        #저장될 파일 이름 변경
+                        fileName = str(uuid.uuid4()) +pathlib.Path(fileNameOrigin).suffix
+
+                        #파일 전체 경로
+                        fileFullPath = filePath + fileName
+
+                        #파일 타입
+                        contentType = file.content_type
+
+                        #파일 저장
+                        file.save(fileFullPath)
+
+                        #파일 크기
+                        fileSize = os.path.getsize(fileFullPath)
+
+                        file_sql = """INSERT INTO FILE_TABLE (fileName, fileNameOrigin, contentType, filesize, fileFullPath)
+                        VALUES (%s,%s,%s,%s,%s) """
+                        cursor.execute(query=file_sql, args=(fileName, fileNameOrigin,contentType,fileSize, fileFullPath))
+                        fileNo = cursor.lastrowid
+
+                    sql = """INSERT INTO BOARD_TABLE (writer, title, contents, fileNo) 
+                    VALUES (%s, %s, %s, %s)  """
+                    cursor.execute(query=sql, args=(userId, title, contents, fileNo))
+                    boardNo = cursor.lastrowid
+
                     data['boardNo'] = boardNo
+
+                    
                 else : 
                     statusCode = 400
                     data['error'] = '접근경로가 잘 못 되었습니다.'    
 
-                
             else :
                 statusCode = 404
                 data['error'] = 'Not in parameter'
+
         except Exception as e :
             logging.error(traceback.format_exc())
             statusCode = 505
@@ -243,6 +307,7 @@ class boardApi(Resource):
         finally :
             #DB CLOSE
             cursor.close()     
+
         return data, statusCode
 
 
@@ -255,6 +320,7 @@ class boardApi(Resource):
     parser.add_argument("boardNo", type=int, required = True, location = "body", help='게시글 no')
     parser.add_argument('title', type =str, required = False, location = 'body', help='제목')
     parser.add_argument('contents', type =str, required = False, location = 'body', help='내용')
+    parser.add_argument("file", type = FileStorage, required = False, location = 'files', help='파일')
     @board.expect(parser)
 
     @board.doc(model = boardPutModel)
@@ -262,7 +328,7 @@ class boardApi(Resource):
         """
         게시글 수정하기
         필수 : Authorization, boardNo
-        일반 : title, contents
+        일반 : title, contents, file
         """
 
         statusCode = 200
@@ -274,7 +340,6 @@ class boardApi(Resource):
         payload = decode_jwt(request.headers)
         if payload is None :
             statusCode = 401
-            #TODO refreshtoken을 이용한 accesstoken 재발급..?으로 권한 재생성 해야함
             data['error'] = '토큰이 만료되었거나, 인증되지 않은 사용자입니다.'
             return data, statusCode
 
@@ -304,21 +369,62 @@ class boardApi(Resource):
                 contents = None
                 if 'contents' in parameter :
                     contents = parameter['contents']    
-
-                sql = """SELECT count(*) AS cnt 
+                
+                file = None
+                if 'file' in request.files :
+                    file = request.files['file']
+                
+                #정상적인 토큰을 가진 회원이 해당 게시물 번호를 가지고 있는지 확인
+                sql = """SELECT count(*) AS cnt, ft.fileFullPath AS prefilePath, ft.fileNo
                 FROM USER_TABLE UT 
-                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer 
+                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer
+                LEFT JOIN FILE_TABLE FT ON bt.fileNo = ft.fileNo 
                 WHERE ut.disabled = 0 AND bt.disabled = 0 AND ut.userId = %s AND bt.boardNo = %s """
 
                 cursor.execute(query=sql , args=(userId, boardNo))
                 result = cursor.fetchone()
 
-                #올바른 경로로 왔다면 수정을 허용함
+                #올바른 경로로 왔다면 수정을 허용함   
                 if result['cnt'] == 1:
+
+                    hasProcess = True
+                    if file is None :
+                        hasProcess = False
+
+                    #request.file에 파일이 있으면 이전 파일을 삭제하고 파일 저장을 진행함
+                    if hasProcess :
+
+                        #이전 파일을 삭제
+                        os.remove(result['prefilePath'])
+                        
+                        filePath = 'files/board/'
+
+                        #원본 파일명
+                        fileNameOrigin = file.filename
+
+                        #저장될 파일 이름 변경
+                        fileName = str(uuid.uuid4()) +pathlib.Path(fileNameOrigin).suffix
+
+                        #파일 전체 경로
+                        fileFullPath = filePath + fileName
+
+                        #파일 타입
+                        contentType = file.content_type
+
+                        #파일 저장
+                        file.save(fileFullPath)
+
+                        #파일 크기
+                        fileSize = os.path.getsize(fileFullPath)
+                        
+                        file_sql = """ UPDATE FILE_TABLE SET fileName = %s, fileNameOrigin=%s, contentType=%s, fileSize=%s, fileFullPath=%s WHERE fileNo = %s """
+                        cursor.execute(query= file_sql, args= (fileName, fileNameOrigin, contentType, fileSize, fileFullPath, result['fileNo']))
 
                     sql = """UPDATE BOARD_TABLE  SET title = %s, contents = %s WHERE writer = %s AND boardNo = %s """
                     cursor.execute(query=sql, args= (title, contents, userId, boardNo) )
+
                     data['success'] = '수정 완료'
+
                 else :
                     statusCode = 400
                     data['error'] = '해당 작성자의 게시물이 아닙니다.'
@@ -347,7 +453,7 @@ class boardApi(Resource):
     parser.add_argument("boardNo", type=int, required = True, location = "body", help='게시글 no')
     @board.expect(parser)
 
-    @board.doc(model= boardDeletModel)
+    @board.doc(model= boardDeleteModel)
     def delete(self):
         """
         게시글 삭제
@@ -364,7 +470,6 @@ class boardApi(Resource):
         payload = decode_jwt(request.headers)
         if payload is None :
             statusCode = 401
-            #TODO refreshtoken을 이용한 accesstoken 재발급..?으로 권한 재생성 해야함
             data['error'] = '토큰이 만료되었거나, 인증되지 않은 사용자입니다.'
             return data, statusCode
         
@@ -382,12 +487,15 @@ class boardApi(Resource):
                 hasParam = False
 
             if hasParam :
+
                 userId = payload['userId']
                 boardNo = parameter['boardNo']        
 
-                sql = """SELECT count(*) AS cnt 
+                #정상적인 토큰을 가진 사용자와 사용자의 게시물인지 조회 및 그 게시물의 파일정보를 추가로 불러옴
+                sql = """SELECT count(*) AS cnt, ft.fileNo, ft.fileName, ft.fileFullPath AS delFilePath
                 FROM USER_TABLE UT 
-                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer 
+                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer
+                LEFT JOIN FILE_TABLE FT ON bt.fileNo = ft.fileNo 
                 WHERE ut.disabled = 0 AND bt.disabled = 0 AND ut.userId = %s AND bt.boardNo = %s """
 
                 cursor.execute(query=sql , args=(userId, boardNo))
@@ -399,6 +507,19 @@ class boardApi(Resource):
                     sql = """ UPDATE BOARD_TABLE SET disabled = 1 WHERE writer = %s AND boardNo = %s """
                     cursor.execute(query=sql, args=(userId, boardNo))
                     data['success'] = 'disabled 수정 완료' 
+
+                    #게시글 데이터가 삭제되면 해당 파일도 disabled = 1로 변환 /// 로컬의 원본 파일은 지우지 않고 휴지통(trash)폴더에 보관
+                    hasProcess = True
+                    if result['fileNo'] is None:
+                        hasProcess = False
+
+                    if hasProcess :
+                        delFilePath = 'files/board/trash/' #휴지통 PATH
+                        delFileFullPath = delFilePath+result['fileName']
+                        shutil.move(result['delFilePath'], delFileFullPath )
+
+                        file_sql = """ UPDATE FILE_TABLE SET disabled = 1, fileFullPath = %s WHERE fileNo = %s  """
+                        cursor.execute(query= file_sql, args=(delFileFullPath, result['fileNo']))
 
                 else : 
                     statusCode = 400
@@ -414,7 +535,9 @@ class boardApi(Resource):
             data['error'] = 'exception error ' + str(e)
 
             return data, statusCode
+
         finally :
             #db 종료
             cursor.close()
+            
         return data, statusCode        

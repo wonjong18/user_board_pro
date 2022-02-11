@@ -36,7 +36,7 @@ class JoinApi(Resource):
     #################################################################################
     parser = join.parser()
     parser.add_argument('userId', type = str, required = True, location='body', help='회원 ID')
-    parser.add_argument('userPwd', type = str, required = True, location='body', help='회원 PASSWORD (8~16자 영문 대 소문자, 숫자, 특수문자)')
+    parser.add_argument('userPwd', type = str, required = True, location='body', help='회원 PASSWORD (8~16자 영문 대 소문자, 숫자, 특수문자 한 개 이상씩)')
     parser.add_argument('reUserPwd', type = str, required = True, location='body', help='PASSWORD 확인')
     parser.add_argument('userName', type = str, required = True, location='body', help='회원 이름')
     parser.add_argument('userGender', type = str, required = True, location='body', help='회원 성별 M(기본값)/F')
@@ -107,7 +107,7 @@ class JoinApi(Resource):
                 
                 #비밀번호 일치 검사
                 if userPwd != reUserPwd :
-                    statusCode = 404
+                    statusCode = 400
                     data['password_fail1'] = '비밀번호가 일치하지 않습니다.'
                     hasProcess = False
                 
@@ -115,14 +115,14 @@ class JoinApi(Resource):
                 if userPwd is not None :
                     pwd_chk = chk_input_match('userPwd', userPwd)
                     if not pwd_chk :
-                        statusCode = 404
+                        statusCode = 400
                         data['password_fail2'] = '8~16자 영문 대 소문자, 숫자, 특수문자를 사용하세요.'
                         hasProcess = False
 
                 #[정규식]연락처 확인
                 phone_chk = chk_input_match('userPhone', userPhone) 
                 if not phone_chk : 
-                    statusCode = 404
+                    statusCode = 400
                     data['userPhone_fail'] = '올바른 연락처가 아닙니다.'
                     hasProcess = False
             
@@ -130,7 +130,7 @@ class JoinApi(Resource):
                 if userBirth is not None :
                     birth_chk = chk_input_match('userBirth', userBirth)
                     if not birth_chk :
-                        statusCode = 404
+                        statusCode = 400
                         data['userBirth_fail'] = '생년월일 8자리를 입력하세요.'
                         hasProcess = False
 
@@ -138,7 +138,7 @@ class JoinApi(Resource):
                 if userBirth is not None :
                     birth_chk = chk_input_match('userEmail', userEmail)
                     if not birth_chk :
-                        statusCode = 404
+                        statusCode = 400
                         data['userEmail_fail'] = '올바른 이메일이 아닙니다.'
                         hasProcess = False
 
@@ -161,7 +161,7 @@ class JoinApi(Resource):
                         data['userNo'] = userNo
 
                     else :
-                        statusCode = 404
+                        statusCode = 400
                         data['userId_fail'] = '아이디 중복입니다. 다른 아이디를 사용하세요.'
             else : 
                 statusCode = 404
