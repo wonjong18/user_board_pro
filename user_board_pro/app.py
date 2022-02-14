@@ -1,5 +1,5 @@
 #-*- coding : utf8 -*-
-from flask import Flask
+from flask import Flask, render_template
 from flask_restx import Api
 from flask_cors import CORS
 
@@ -22,6 +22,7 @@ api.add_namespace(join, '/join')
 api.add_namespace(login, '/login')
 api.add_namespace(board, '/board')
 api.add_namespace(boardList, '/boardList')
+
 
 if __name__ == '__main__' :
     app.run(debug=True, host='0.0.0.0', port=8087)

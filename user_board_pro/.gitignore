@@ -1,3 +1,7 @@
+files/board/trash/*
+files/board/*.jpg
+files/board/*.txt
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/

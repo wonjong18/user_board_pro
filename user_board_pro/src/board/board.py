@@ -22,7 +22,7 @@ boardGetModel = board.schema_model('boardGetModel', {
         "title": {
             "type": "string"
         },
-        "writer": {
+        "userId": {
             "type": "string"
         },
         "contents": {
@@ -41,7 +41,7 @@ boardGetModel = board.schema_model('boardGetModel', {
     "required": [
         "timestamp",
         "title",
-        "writer",
+        "userId",
         "contents",
         "fileName",
         "counting",
@@ -127,32 +127,33 @@ class boardApi(Resource):
         cursor = mysql_cursor(mysql_conn(serverType))
         try:
             hasParam = True
-            if 'boardNo' not in parameter or parameter['boardNo'] =='' :
+            if 'boardNo' not in parameter or parameter['boardNo'] is None :
                 hasParam = False
 
             if hasParam :
                 boardNo = parameter['boardNo']
 
-                sql = """SELECT count(*) AS cnt FROM BOARD_TABLE BT WHERE disabled = 0  AND boardNo =%s"""
+                sql = """SELECT count(*) AS cnt FROM board_table BT WHERE disabled = 0  AND boardNo =%s"""
                 cursor.execute(query=sql, args=boardNo)
                 res = cursor.fetchone()
 
                 if res['cnt'] == 1 :
 
                     #조회수 처리
-                    sql = """UPDATE BOARD_TABLE SET counting = counting + 1 WHERE boardNo = %s"""
+                    sql = """UPDATE board_table SET counting = counting + 1 WHERE boardNo = %s"""
                     cursor.execute(query=sql, args=boardNo)
 
                     #게시글 상세 조회
-                    sql = """SELECT bt.title, bt.writer, bt.contents, bt.counting, bt.createdDate, ft.fileNameOrigin
-                    FROM BOARD_TABLE BT
-                    LEFT JOIN FILE_TABLE FT  ON bt.fileNo = ft.fileNo 
-                    WHERE bt.disabled= 0 AND bt.boardNo = %s"""
+                    sql = """SELECT BT.title, UT.userId, BT.contents, BT.counting, BT.createdDate, ft.fileNameOrigin
+                    FROM board_table BT
+                    LEFT JOIN user_table UT ON BT.userNo = UT.userNo
+                    LEFT JOIN file_table FT  ON BT.boardNo = FT.boardNo 
+                    WHERE BT.disabled= 0 AND BT.boardNo = %s"""
                     cursor.execute(query= sql, args=boardNo)
                     result =  cursor.fetchone()
 
                     data['title'] = result['title']
-                    data['writer'] = result['writer']
+                    data['userId'] = result['userId']
                     data['contents'] = result['contents']
 
                     #파일이 있으면 파일 이름을 보여줌
@@ -223,16 +224,16 @@ class boardApi(Resource):
         try:
             hasParam = True
 
-            if 'userId' not in payload or payload['userId'] == '' :
+            if 'userNo' not in payload or payload['userNo'] is None :
                 hasParam = False
-            if 'title' not in parameter or parameter['title'] == '' :
+            if 'title' not in parameter or parameter['title'] is None :
                 hasParam = False
-            if 'contents' not in parameter or parameter['contents'] == '':
+            if 'contents' not in parameter or parameter['contents'] is None:
                 hasParam = False
             
             if hasParam :
 
-                userId = payload['userId']
+                userNo = payload['userNo']
                 title = parameter['title']
                 contents = parameter['contents']       
 
@@ -242,16 +243,22 @@ class boardApi(Resource):
                     file = request.files['file']
 
                 #정상적인 토큰을 가진 회원인지 조회
-                sql = """SELECT count(userNo) AS cnt FROM USER_TABLE UT WHERE disabled = 0 AND userId = %s""" 
-                cursor.execute(query= sql, args= userId)
+                sql = """SELECT count(userNo) AS cnt FROM user_table UT WHERE disabled = 0 AND userNo = %s""" 
+                cursor.execute(query= sql, args= userNo)
                 result = cursor.fetchone()
 
                 #정상적인 경로로 왔을 때
                 if result['cnt'] == 1: 
 
+                    sql = """INSERT INTO board_table (userNo, title, contents) 
+                    VALUES (%s, %s, %s)  """
+                    cursor.execute(query=sql, args=(userNo, title, contents))
+                    boardNo = cursor.lastrowid
+
+                    data['boardNo'] = boardNo
+
                     hasProcess = True
                     if file is None:
-                        fileNo = None
                         hasProcess = False
 
                     #request.file에 파일이 있으면 파일 저장을 진행함
@@ -276,18 +283,9 @@ class boardApi(Resource):
                         #파일 크기
                         fileSize = os.path.getsize(fileFullPath)
 
-                        file_sql = """INSERT INTO FILE_TABLE (fileName, fileNameOrigin, contentType, filesize, fileFullPath)
-                        VALUES (%s,%s,%s,%s,%s) """
-                        cursor.execute(query=file_sql, args=(fileName, fileNameOrigin,contentType,fileSize, fileFullPath))
-                        fileNo = cursor.lastrowid
-
-                    sql = """INSERT INTO BOARD_TABLE (writer, title, contents, fileNo) 
-                    VALUES (%s, %s, %s, %s)  """
-                    cursor.execute(query=sql, args=(userId, title, contents, fileNo))
-                    boardNo = cursor.lastrowid
-
-                    data['boardNo'] = boardNo
-
+                        file_sql = """INSERT INTO file_table (boardNo, fileName, fileNameOrigin, contentType, filesize, fileFullPath)
+                        VALUES (%s, %s, %s, %s, %s, %s) """
+                        cursor.execute(query=file_sql, args=(boardNo, fileName, fileNameOrigin, contentType, fileSize, fileFullPath))
                     
                 else : 
                     statusCode = 400
@@ -353,13 +351,13 @@ class boardApi(Resource):
         cursor = mysql_cursor(mysql_conn(serverType))
         try :
             hasParam = True
-            if 'userId' not in payload or payload['userId'] =='':
+            if 'userNo' not in payload or payload['userNo'] is None:
                 hasParam = False
-            if 'boardNo' not in parameter or parameter['boardNo']  =='':
+            if 'boardNo' not in parameter or parameter['boardNo']  is None:
                 hasParam = False
             
             if hasParam :    
-                userId = payload['userId']
+                userNo = payload['userNo']
                 boardNo = parameter['boardNo']
 
                 title = None
@@ -375,17 +373,20 @@ class boardApi(Resource):
                     file = request.files['file']
                 
                 #정상적인 토큰을 가진 회원이 해당 게시물 번호를 가지고 있는지 확인
-                sql = """SELECT count(*) AS cnt, ft.fileFullPath AS prefilePath, ft.fileNo
-                FROM USER_TABLE UT 
-                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer
-                LEFT JOIN FILE_TABLE FT ON bt.fileNo = ft.fileNo 
-                WHERE ut.disabled = 0 AND bt.disabled = 0 AND ut.userId = %s AND bt.boardNo = %s """
+                sql = """SELECT count(*) AS cnt, FT.fileFullPath AS prefilePath, BT.boardNo
+                FROM user_table UT 
+                LEFT JOIN board_table BT ON UT.userNo = BT.userNo
+                LEFT JOIN file_table FT ON BT.boardNo = FT.boardNo 
+                WHERE FT.disabled = 0 AND BT.disabled = 0 AND UT.userNo = %s AND BT.boardNo = %s """
 
-                cursor.execute(query=sql , args=(userId, boardNo))
+                cursor.execute(query=sql , args=(userNo, boardNo))
                 result = cursor.fetchone()
 
                 #올바른 경로로 왔다면 수정을 허용함   
                 if result['cnt'] == 1:
+
+                    sql = """UPDATE board_table  SET title = %s, contents = %s WHERE userNo = %s AND boardNo = %s """
+                    cursor.execute(query=sql, args= (title, contents, userNo, boardNo) )
 
                     hasProcess = True
                     if file is None :
@@ -394,9 +395,6 @@ class boardApi(Resource):
                     #request.file에 파일이 있으면 이전 파일을 삭제하고 파일 저장을 진행함
                     if hasProcess :
 
-                        #이전 파일을 삭제
-                        os.remove(result['prefilePath'])
-                        
                         filePath = 'files/board/'
 
                         #원본 파일명
@@ -417,11 +415,17 @@ class boardApi(Resource):
                         #파일 크기
                         fileSize = os.path.getsize(fileFullPath)
                         
-                        file_sql = """ UPDATE FILE_TABLE SET fileName = %s, fileNameOrigin=%s, contentType=%s, fileSize=%s, fileFullPath=%s WHERE fileNo = %s """
-                        cursor.execute(query= file_sql, args= (fileName, fileNameOrigin, contentType, fileSize, fileFullPath, result['fileNo']))
 
-                    sql = """UPDATE BOARD_TABLE  SET title = %s, contents = %s WHERE writer = %s AND boardNo = %s """
-                    cursor.execute(query=sql, args= (title, contents, userId, boardNo) )
+                        file_sql = """ INSERT INTO file_table (fileNAme, fileNameOrigin, contentType, fileSize, fileFullPath, boardNo) 
+                        VALUES (%s, %s, %s, %s, %s, %s)"""
+
+                        if result['prefilePath'] is not None :
+
+                            #이전 파일을 삭제
+                            os.remove(result['prefilePath'])
+                            file_sql = """ UPDATE file_table SET fileName = %s, fileNameOrigin=%s, contentType=%s, fileSize=%s, fileFullPath=%s WHERE boardNo = %s """
+
+                        cursor.execute(query= file_sql, args= (fileName, fileNameOrigin, contentType, fileSize, fileFullPath, result['boardNo']))
 
                     data['success'] = '수정 완료'
 
@@ -481,31 +485,31 @@ class boardApi(Resource):
         cursor = mysql_cursor(mysql_conn(serverType))
         try :
             hasParam = True
-            if "userId" not in payload or payload['userId'] == '' :
+            if "userNo" not in payload or payload['userNo'] is None :
                 hasParam = False
-            if "boardNo" not in parameter or parameter['boardNo'] == '' :
+            if "boardNo" not in parameter or parameter['boardNo'] is None :
                 hasParam = False
 
             if hasParam :
 
-                userId = payload['userId']
+                userNo = payload['userNo']
                 boardNo = parameter['boardNo']        
 
                 #정상적인 토큰을 가진 사용자와 사용자의 게시물인지 조회 및 그 게시물의 파일정보를 추가로 불러옴
-                sql = """SELECT count(*) AS cnt, ft.fileNo, ft.fileName, ft.fileFullPath AS delFilePath
-                FROM USER_TABLE UT 
-                LEFT JOIN BOARD_TABLE BT ON ut.userId = bt.writer
-                LEFT JOIN FILE_TABLE FT ON bt.fileNo = ft.fileNo 
-                WHERE ut.disabled = 0 AND bt.disabled = 0 AND ut.userId = %s AND bt.boardNo = %s """
+                sql = """SELECT FT.boardNo, FT.fileName, FT.fileNo, FT.fileFullPath AS delFilePath
+                FROM user_table UT 
+                LEFT JOIN board_table BT ON UT.userNo = UT.userNo
+                LEFT JOIN file_table FT ON BT.boardNo = FT.boardNo 
+                WHERE UT.disabled = 0 AND BT.disabled = 0 AND UT.userNo = %s AND BT.boardNo = %s """
 
-                cursor.execute(query=sql , args=(userId, boardNo))
+                cursor.execute(query=sql , args=(userNo, boardNo))
                 result = cursor.fetchone()
 
                 #올바른 경로로 왔다면 disabled 수정을 허용함
-                if result['cnt'] == 1:
+                if result:
 
-                    sql = """ UPDATE BOARD_TABLE SET disabled = 1 WHERE writer = %s AND boardNo = %s """
-                    cursor.execute(query=sql, args=(userId, boardNo))
+                    sql = """ UPDATE board_table SET disabled = 1 WHERE userNo = %s AND boardNo = %s """
+                    cursor.execute(query=sql, args=(userNo, boardNo))
                     data['success'] = 'disabled 수정 완료' 
 
                     #게시글 데이터가 삭제되면 해당 파일도 disabled = 1로 변환 /// 로컬의 원본 파일은 지우지 않고 휴지통(trash)폴더에 보관
@@ -518,8 +522,8 @@ class boardApi(Resource):
                         delFileFullPath = delFilePath+result['fileName']
                         shutil.move(result['delFilePath'], delFileFullPath )
 
-                        file_sql = """ UPDATE FILE_TABLE SET disabled = 1, fileFullPath = %s WHERE fileNo = %s  """
-                        cursor.execute(query= file_sql, args=(delFileFullPath, result['fileNo']))
+                        file_sql = """ UPDATE file_table SET disabled = 1, fileFullPath = %s WHERE boardNo = %s  """
+                        cursor.execute(query= file_sql, args=(delFileFullPath, result['boardNo']))
 
                 else : 
                     statusCode = 400

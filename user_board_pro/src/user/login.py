@@ -83,8 +83,8 @@ class LoginApi(Resource):
                 userId = parameter['userId']
                 userPwd = parameter['userPwd']
 
-                sql = """SELECT userNo, userId, userName FROM USER_TABLE  
-                WHERE DISABLED = 0 AND userId = %s AND userPwd = sha2(%s,256)"""
+                sql = """SELECT userNo, userId, userName FROM user_table  
+                WHERE disabled = 0 AND userId = %s AND userPwd = sha2(%s,256)"""
                 cursor.execute(query=sql, args=(userId, userPwd))
                 result = cursor.fetchone()
 
@@ -100,7 +100,7 @@ class LoginApi(Resource):
                     refresh_token = jwt_refresh_token_generator(userNo)
 
                     #refreshtoken 업데이트
-                    sql = 'UPDATE USER_TABLE SET refreshToken = %s WHERE userNo = %s'
+                    sql = 'UPDATE user_table SET refreshToken = %s WHERE userNo = %s'
                     cursor.execute(query=sql, args=(refresh_token, userNo))
 
                     data['userNo'] = userNo

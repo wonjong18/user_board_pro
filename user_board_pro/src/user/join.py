@@ -3,7 +3,7 @@ import logging
 import traceback
 logging.basicConfig(level=logging.ERROR)
 
-from flask import request
+from flask import render_template, request
 from flask_restx import Resource, Namespace, reqparse
 import datetime
 from src.common.util import *
@@ -29,7 +29,7 @@ joinPostModel = join.schema_model('joinPostModel',{
     ]
 })
 
-@join.route('', methods=['POST'])
+@join.route('/join', methods=['POST'])
 class JoinApi(Resource):
     #################################################################################
     #POST 회원가입
@@ -74,19 +74,19 @@ class JoinApi(Resource):
         cursor = mysql_cursor(mysql_conn(serverType))
         try:
             hasParam = True
-            if 'userId' not in parameter  or parameter['userId'] =='' :
+            if 'userId' not in parameter  or parameter['userId'] is None :
                 hasParam = False
-            if 'userPwd' not in parameter  or parameter['userPwd'] =='' :
+            if 'userPwd' not in parameter  or parameter['userPwd'] is None :
                 hasParam = False
-            if 'reUserPwd' not in parameter  or parameter['reUserPwd'] =='' :
+            if 'reUserPwd' not in parameter  or parameter['reUserPwd'] is None :
                 hasParam = False
-            if 'userName' not in parameter  or parameter['userName'] =='' :
+            if 'userName' not in parameter  or parameter['userName'] is None :
                 hasParam = False                
-            if 'userGender' not in parameter  or parameter['userGender'] =='' :
+            if 'userGender' not in parameter  or parameter['userGender'] is None :
                 hasParam = False      
-            if 'userPhone' not in parameter or parameter['userPhone'] == '' :
+            if 'userPhone' not in parameter or parameter['userPhone'] is None :
                 hasParam = False
-            if 'userBirth' not in parameter or parameter['userBirth'] == '' :
+            if 'userBirth' not in parameter or parameter['userBirth'] is None :
                 hasParam = False    
 
             if hasParam :
@@ -146,7 +146,7 @@ class JoinApi(Resource):
                 if hasProcess :
 
                     #아이디 중복 체크
-                    sql  = """SELECT count(userId) AS id_chk FROM USER_TABLE WHERE userId = %s"""
+                    sql  = """SELECT count(userId) AS id_chk FROM user_table WHERE disabled = 0 AND userId = %s"""
                     cursor.execute(query= sql, args=userId)
                     result = cursor.fetchone()
 

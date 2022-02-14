@@ -85,7 +85,6 @@ def decode_jwt(headers):
     return None
 
 
-
 #유효성 검사
 def chk_input_match(in_type, in_value):    
     #정규식으로 입력값 체크
@@ -107,3 +106,33 @@ def chk_input_match(in_type, in_value):
         return True
     else :
         return False        
+
+#게시글 개수, list 추출 
+def board_list (userId, sql, searchType, searchText ):
+
+    sql = sql + """ FROM board_table BT 
+    LEFT JOIN user_table UT ON BT.userNo = UT.userNo 
+    LEFT JOIN file_table FT ON BT.boardNo = FT.boardNo
+    WHERE BT.disabled = 0 """
+
+    #회원이 자신의 게시글을 조회했을 때
+    if userId is not None :
+        sql = sql + """ AND UT.userId = '%s' """ %userId
+    # else :
+    #     sql = sql + " "        
+
+    #검색어 기능
+    if searchType is not None and searchText is not None:
+        if searchType == 'writer' :
+            sql = sql + """ AND UT.writer like '%%%s%%'  """ %searchText
+
+        if searchType == 'contents' :
+            sql = sql + """ AND BT.contents like '%%%s%%'  """ %searchText
+
+        if searchType == 'title' :
+            sql = sql + """ AND BT.title like '%%%s%%'  """ %searchText
+
+    # ORDER BY
+    sql = sql + " ORDER BY BT.boardNo DESC "        
+
+    return sql
